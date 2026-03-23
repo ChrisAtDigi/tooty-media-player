@@ -1,0 +1,16 @@
+{
+  "_comment": "Place this file inside a title folder to override TMDB auto-matching.",
+  "_comment2": "All fields are optional except 'title'. Remove fields you don't need.",
+
+  "title": "My Custom Title",
+  "year": 2023,
+  "genre": ["Documentary", "Personal"],
+  "description": "A brief description of this title.",
+  "poster": "poster.jpg",
+  "backdrop": "backdrop.jpg",
+  "rating": null,
+  "runtime": 95,
+  "director": "Director Name",
+  "cast": ["Person One", "Person Two"],
+  "tmdb_id": null
+}
