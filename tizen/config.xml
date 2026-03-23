@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns="http://www.w3.org/ns/widgets"
+        xmlns:tizen="http://tizen.org/ns/widgets"
+        id="http://chrisatdigi.com/tooty"
+        version="1.0.0"
+        viewmodes="fullscreen">
+
+  <tizen:application id="tooty.app" package="tooty" required_version="4.0"/>
+
+  <name>Tooty</name>
+  <icon src="icon.png"/>
+
+  <content src="../dist/index.html"/>
+
+  <feature name="http://tizen.org/feature/screen.size.all"/>
+
+  <!-- Filesystem access for HDD/USB scanning -->
+  <tizen:privilege name="http://tizen.org/privilege/filesystem.read"/>
+  <tizen:privilege name="http://tizen.org/privilege/filesystem.write"/>
+
+  <!-- localStorage is sufficient for metadata cache — no additional privilege needed -->
+
+  <!-- Network access for TMDB API calls -->
+  <tizen:privilege name="http://tizen.org/privilege/internet"/>
+
+  <!-- AVPlay for video playback -->
+  <tizen:privilege name="http://tizen.org/privilege/tv.avplay"/>
+
+  <tizen:setting screen-orientation="landscape"
+                 context-menu="disable"
+                 background-support="disable"
+                 encryption="disable"
+                 install-location="auto"/>
+</widget>

@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    @apply w-full h-full bg-surface text-text-primary;
+    /* Force 1080p layout — Tizen renders at 1920×1080 */
+    min-width: 1920px;
+    min-height: 1080px;
+    overflow: hidden;
+  }
+
+  /* Global focus ring — replaces browser default outline with TV-visible ring */
+  *:focus {
+    outline: none;
+  }
+
+  .focusable:focus {
+    @apply ring-tv ring-focus-ring ring-offset-2 ring-offset-surface;
+  }
+}
+
+@layer components {
+  /* Spatial navigation focus class applied by js-spatial-navigation */
+  .sn-focused {
+    @apply ring-4 ring-focus-ring ring-offset-2 ring-offset-surface;
+  }
+}
