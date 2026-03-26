@@ -48,6 +48,10 @@ const YEAR_LOOSE_RE = /\b(19\d{2}|20\d{2})\b/
 // Regex: SxxExx[Exx] episode pattern
 const EPISODE_RE = /[Ss](\d{1,2})[Ee](\d{2})(?:[Ee](\d{2}))?/
 
+// Regex: 3-digit compact episode code — single season digit + 2-digit episode (e.g. 101 = S01E01)
+// Only matches exactly 3 digits isolated from other digits to avoid false positives on years.
+const COMPACT_EP_RE = /(?<!\d)(\d)(\d{2})(?!\d)/
+
 // Regex: file extension
 const EXT_RE = /\.([a-z0-9]{2,4})$/i
 
@@ -135,14 +139,19 @@ export function parseFilename(filename) {
   let name = stripExtension(filename).trim()
 
   // ── Episode detection (must run before year detection) ──────────────────────
-  const episodeMatch = name.match(EPISODE_RE)
+  let episodeMatch = name.match(EPISODE_RE)
+  let episodeRe    = EPISODE_RE
+  if (!episodeMatch) {
+    episodeMatch = name.match(COMPACT_EP_RE) // fallback: 3-digit compact code (101 → S01E01)
+    episodeRe    = COMPACT_EP_RE
+  }
   if (episodeMatch) {
     const season = parseInt(episodeMatch[1], 10)
     const episode = parseInt(episodeMatch[2], 10)
     const episodeEnd = episodeMatch[3] ? parseInt(episodeMatch[3], 10) : null
 
-    // Everything after the SxxExx token is the episode title
-    const afterToken = name.slice(name.search(EPISODE_RE) + episodeMatch[0].length)
+    // Everything after the episode token is the episode title
+    const afterToken = name.slice(name.search(episodeRe) + episodeMatch[0].length)
     let episodeTitle = afterToken
       .replace(/^[\s\-–—.]+/, '')   // strip leading separator
       .trim()

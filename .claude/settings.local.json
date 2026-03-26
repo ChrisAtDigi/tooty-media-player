@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(npx vite:*)",
+      "Bash(ls node_modules/.bin/vite*)",
+      "Bash(dir:*)",
+      "Bash(node -e \"require\\(''C:/Users/chris/Desktop/Duck_Shmuck_Goose/Dev/tooty-media-player/node_modules/vite/package.json''\\).version\")",
+      "Bash(cmd.exe /c 'dir D:\\\\Movies /b')",
+      "Bash(powershell -Command \"Get-ChildItem 'D:\\\\Movies' | Select-Object -ExpandProperty Name | Select-Object -First 30\")",
+      "Bash(powershell -Command \"Get-ChildItem 'D:\\\\Books' | Select-Object Name, Attributes\")"
+    ]
+  }
+}

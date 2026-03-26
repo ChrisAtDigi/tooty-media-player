@@ -7,8 +7,9 @@
  *   → discovers Movies, Series, Audiobooks, Music folders
  *   → returns a LibraryResult { movies, series, audiobooks, music }
  *
- * This module is Tizen-only. All tizen.filesystem calls are wrapped so
- * they can be swapped for mock data during browser-based development.
+ * In browser dev mode (tizen undefined), fetches from the Vite dev server's
+ * /api/library endpoint (served by scripts/dev-scanner.js) instead of
+ * returning empty arrays.
  */
 
 import {
@@ -45,6 +46,18 @@ const CATEGORY_FOLDERS = {
  * }
  */
 export async function scanStorage(rootPath) {
+  // In browser dev mode, delegate to the Vite dev server's filesystem API
+  if (typeof tizen === 'undefined') {
+    try {
+      const encoded = encodeURIComponent(rootPath)
+      const res = await fetch(`/api/library?root=${encoded}`)
+      if (res.ok) return await res.json()
+    } catch (err) {
+      console.warn('[scanner] Dev API unavailable, returning empty library:', err)
+    }
+    return { movies: [], series: [], audiobooks: [], music: [], scannedAt: Date.now() }
+  }
+
   const topDirs = await listDirectory(rootPath)
 
   const result = {

@@ -34,8 +34,14 @@ export const BACKDROP_SIZES = {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
+// Env var takes priority (baked in at build time).
+// Falls back to localStorage so the user can override via Settings if needed.
 export function getTmdbApiKey() {
-  return localStorage.getItem('tooty:config:tmdbKey') || null
+  return (
+    import.meta.env.VITE_TMDB_API_KEY ||
+    localStorage.getItem('tooty:config:tmdbKey') ||
+    null
+  )
 }
 
 export function setTmdbApiKey(key) {

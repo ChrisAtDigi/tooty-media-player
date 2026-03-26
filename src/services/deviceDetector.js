@@ -137,10 +137,10 @@ export function listKnownDevices() {
 function getExternalStorages() {
   return new Promise((resolve) => {
     if (typeof tizen === 'undefined') {
-      // Browser dev — return a mock device for development
-      resolve([
-        { key: 'removable1', label: 'USB Drive (mock)', rootPath: 'removable1://' },
-      ])
+      // Browser dev — use VITE_DEV_ROOT if set (e.g. "D:/"), else a generic mock
+      const devRoot = import.meta.env.VITE_DEV_ROOT ?? 'D:/'
+      const devLabel = `Dev Drive (${devRoot})`
+      resolve([{ key: 'dev-drive', label: devLabel, rootPath: devRoot }])
       return
     }
 
