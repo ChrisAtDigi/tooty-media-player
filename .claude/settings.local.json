@@ -10,7 +10,25 @@
       "Bash(node -e \"require\\(''C:/Users/chris/Desktop/Duck_Shmuck_Goose/Dev/tooty-media-player/node_modules/vite/package.json''\\).version\")",
       "Bash(cmd.exe /c 'dir D:\\\\Movies /b')",
       "Bash(powershell -Command \"Get-ChildItem 'D:\\\\Movies' | Select-Object -ExpandProperty Name | Select-Object -First 30\")",
-      "Bash(powershell -Command \"Get-ChildItem 'D:\\\\Books' | Select-Object Name, Attributes\")"
+      "Bash(powershell -Command \"Get-ChildItem 'D:\\\\Books' | Select-Object Name, Attributes\")",
+      "Bash(tizen package:*)",
+      "Bash(cmd /c \"tizen package -t wgt -s HomeSamsungTV -- \\\\\"C:\\\\Users\\\\chris\\\\Desktop\\\\Duck_Shmuck_Goose\\\\Dev\\\\tooty-media-player\\\\tizen-package\\\\\" 2>&1\")",
+      "Bash(cmd /c \"where tizen 2>&1\")",
+      "Read(//c/tizen-studio/tools/ide/bin//**)",
+      "Read(//c/Users/chris/Desktop/Duck_Shmuck_Goose/Dev/tooty-media-player/$USERPROFILE/tizen-studio/tools/ide/**)",
+      "Read(//c/Users/chris/**)",
+      "Bash(TIZEN=\"/c/tizen-studio/tools/ide/bin/tizen.bat\")",
+      "Bash(PACKAGE_DIR=\"C:\\\\Users\\\\chris\\\\Desktop\\\\Duck_Shmuck_Goose\\\\Dev\\\\tooty-media-player\\\\tizen-package\")",
+      "Bash(cmd /c \"\"\"$TIZEN\"\" package -t wgt -s HomeSamsungTV -- \"\"$PACKAGE_DIR\"\" 2>&1\")",
+      "Bash(cmd /c \"C:\\\\\\\\tizen-studio\\\\\\\\tools\\\\\\\\ide\\\\\\\\bin\\\\\\\\tizen.bat package -t wgt -s HomeSamsungTV -- C:\\\\\\\\Users\\\\\\\\chris\\\\\\\\Desktop\\\\\\\\Duck_Shmuck_Goose\\\\\\\\Dev\\\\\\\\tooty-media-player\\\\\\\\tizen-package 2>&1\")",
+      "Bash(cmd /c \"C:\\\\tizen-studio\\\\tools\\\\ide\\\\bin\\\\tizen.bat package -t wgt -s HomeSamsungTV -- C:\\\\Users\\\\chris\\\\Desktop\\\\Duck_Shmuck_Goose\\\\Dev\\\\tooty-media-player\\\\tizen-package\")",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(powershell -Command \"& 'C:\\\\\\\\tizen-studio\\\\\\\\tools\\\\\\\\ide\\\\\\\\bin\\\\\\\\tizen.bat' package -t wgt -s HomeSamsungTV -- 'C:\\\\\\\\Users\\\\\\\\chris\\\\\\\\Desktop\\\\\\\\Duck_Shmuck_Goose\\\\\\\\Dev\\\\\\\\tooty-media-player\\\\\\\\tizen-package'\" 2>&1)",
+      "Bash(powershell -Command \"& 'C:\\\\\\\\tizen-studio\\\\\\\\tools\\\\\\\\ide\\\\\\\\bin\\\\\\\\tizen.bat' install -n Tooty.wgt -t 192.168.5.55\" 2>&1)",
+      "Bash(powershell -Command \"& ''C:\\\\tizen-studio\\\\tools\\\\ide\\\\bin\\\\tizen.bat'' package -t wgt -s HomeSamsungTV -- ''C:\\\\Users\\\\chris\\\\Desktop\\\\Duck_Shmuck_Goose\\\\Dev\\\\tooty-media-player\\\\tizen-package''\")",
+      "Bash(powershell -Command \"& 'C:\\\\\\\\tizen-studio\\\\\\\\tools\\\\\\\\ide\\\\\\\\bin\\\\\\\\tizen.bat' install -n 'C:\\\\\\\\Users\\\\\\\\chris\\\\\\\\Desktop\\\\\\\\Duck_Shmuck_Goose\\\\\\\\Dev\\\\\\\\tooty-media-player\\\\\\\\tizen-package\\\\\\\\Tooty.wgt' -- 192.168.5.55\" 2>&1)",
+      "Bash(powershell -Command \"& ''C:\\\\tizen-studio\\\\tools\\\\ide\\\\bin\\\\tizen.bat'' install -n ''C:\\\\Users\\\\chris\\\\Desktop\\\\Duck_Shmuck_Goose\\\\Dev\\\\tooty-media-player\\\\tizen-package\\\\Tooty.wgt'' -- 192.168.5.55\")",
+      "Bash(ls:*)"
     ]
   }
 }

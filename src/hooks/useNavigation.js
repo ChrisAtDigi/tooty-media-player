@@ -75,13 +75,25 @@ export default function useNavigation(handlers = {}, focusSelector = '.focusable
     SpatialNavigation.focus()
 
     function handleKeyDown(e) {
-      const entry = Object.entries(KEYS).find(([, code]) => code === e.keyCode)
+      // Normalise W3C MediaPlayPause (179) → Tizen PLAY_PAUSE (10252).
+      // Samsung Smart Remotes may send either depending on firmware version.
+      const keyCode = e.keyCode === 179 ? 10252 : e.keyCode
+      const entry = Object.entries(KEYS).find(([, code]) => code === keyCode)
       if (!entry) return
       const [name] = entry
       const handler = handlersRef.current[name]
       if (handler) {
         e.preventDefault()
         handler(e)
+        return
+      }
+
+      if (name === 'ENTER') {
+        const focused = document.querySelector('.sn-focused, .focusable:focus')
+        if (focused && typeof focused.click === 'function') {
+          e.preventDefault()
+          focused.click()
+        }
       }
     }
 

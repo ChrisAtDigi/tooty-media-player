@@ -64,9 +64,36 @@ export function clearMetadataCache() {
   const keysToRemove = []
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i)
-    if (key && key.startsWith(`${NS}:meta:`)) keysToRemove.push(key)
+    if (key && (key.startsWith(`${NS}:meta:`) || key.startsWith(`${NS}:lookup:`))) {
+      keysToRemove.push(key)
+    }
   }
   keysToRemove.forEach(k => localStorage.removeItem(k))
+}
+
+/**
+ * Retrieve a cached lookup result for a title/year query.
+ * Returns the parsed object or null if not found.
+ */
+export function getCachedLookup(type, key) {
+  try {
+    const raw = localStorage.getItem(lookupKey(type, key))
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Store a lookup result for a title/year query.
+ * The value can represent either a hit or a miss.
+ */
+export function setCachedLookup(type, key, data) {
+  try {
+    localStorage.setItem(lookupKey(type, key), JSON.stringify(data))
+  } catch {
+    // Fail silently; lookup caching is an optimisation.
+  }
 }
 
 // ─── Playback progress ────────────────────────────────────────────────────────
@@ -144,6 +171,10 @@ export function clearAllProgress() {
 
 function metaKey(type, id) {
   return `${NS}:meta:${type}:${id}`
+}
+
+function lookupKey(type, key) {
+  return `${NS}:lookup:${type}:${key}`
 }
 
 function progressKey(mediaId) {

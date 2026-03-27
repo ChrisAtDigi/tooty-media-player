@@ -288,6 +288,68 @@ async function scanAudiobooks(booksPath) {
   return books
 }
 
+/**
+ * Scan the Music folder.
+ *
+ * Handles two layouts:
+ *   1. Standard:  Music/Artist/Album/01 - Track.mp3
+ *   2. Flat:      Music/Artist/01 - Track.mp3  (no Album subfolder)
+ */
+async function scanMusic(musicPath) {
+  const artists = []
+  const artistDirs = await readDirEntries(musicPath)
+
+  for (const artistDir of artistDirs) {
+    if (!artistDir.isDirectory) continue
+
+    const children = await readDirEntries(artistDir.fullPath)
+    const albums = []
+
+    // Check for album subdirectories
+    const albumDirs = children.filter(c => c.isDirectory)
+    const directTracks = children.filter(c => !c.isDirectory && isAudioFile(c.name))
+
+    for (const albumDir of albumDirs) {
+      const files = await readDirEntries(albumDir.fullPath)
+      const tracks = files
+        .filter(f => !f.isDirectory && isAudioFile(f.name))
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+      if (tracks.length === 0) continue
+      albums.push({
+        id:         pathToId(albumDir.fullPath),
+        title:      albumDir.name,
+        folderPath: albumDir.fullPath,
+        tracks:     tracks.map((f, i) => ({
+          id: pathToId(f.fullPath), index: i, filename: f.name, filePath: f.fullPath,
+        })),
+      })
+    }
+
+    // Flat tracks directly under the artist folder → treat as a single self-titled album
+    if (directTracks.length > 0) {
+      albums.push({
+        id:         pathToId(artistDir.fullPath) + '_flat',
+        title:      artistDir.name,
+        folderPath: artistDir.fullPath,
+        tracks:     directTracks
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+          .map((f, i) => ({ id: pathToId(f.fullPath), index: i, filename: f.name, filePath: f.fullPath })),
+      })
+    }
+
+    if (albums.length > 0) {
+      artists.push({
+        id:         pathToId(artistDir.fullPath),
+        name:       artistDir.name,
+        folderPath: artistDir.fullPath,
+        albums,
+      })
+    }
+  }
+
+  return artists
+}
+
 // ─── Main scan entry point ────────────────────────────────────────────────────
 
 async function scanDriveForLibrary(rootPath) {
@@ -316,7 +378,9 @@ async function scanDriveForLibrary(rootPath) {
       case 'audiobooks':
         result.audiobooks = await scanAudiobooks(entry.fullPath)
         break
-      // music scanner can be added later
+      case 'music':
+        result.music = await scanMusic(entry.fullPath)
+        break
     }
   }
 

@@ -15,6 +15,9 @@
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const VIDEO_EXTENSIONS = new Set(['mkv', 'mp4', 'avi', 'mov', 'wmv', 'm4v', 'ts', 'vob'])
+
+// Extensions known to work reliably on Tizen AVPlay
+const SUPPORTED_VIDEO_EXTS = new Set(['mkv', 'mp4', 'm4v', 'ts'])
 const AUDIO_EXTENSIONS = new Set(['mp3', 'flac', 'aac', 'm4a', 'ogg', 'wav', 'opus', 'm4b'])
 const SUBTITLE_EXTENSIONS = new Set(['srt', 'ass', 'ssa', 'vtt', 'sub'])
 
@@ -223,6 +226,16 @@ export function parseSubtitle(filename) {
     language: langMatch ? langMatch[1].toLowerCase() : null,
     extension: ext,
   }
+}
+
+/**
+ * Returns true if the file path has a video extension not reliably supported by Tizen AVPlay.
+ * Accepts a full path or just a filename.
+ */
+export function isUnsupportedFormat(filePath) {
+  if (!filePath) return false
+  const ext = getExtension(filePath)
+  return ext !== null && VIDEO_EXTENSIONS.has(ext) && !SUPPORTED_VIDEO_EXTS.has(ext)
 }
 
 /**

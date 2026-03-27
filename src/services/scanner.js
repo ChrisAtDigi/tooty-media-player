@@ -60,6 +60,11 @@ export async function scanStorage(rootPath) {
 
   const topDirs = await listDirectory(rootPath)
 
+  console.log(
+    `[Tooty] scanStorage(${rootPath}) — top-level entries:`,
+    topDirs.map(e => e.name + (e.isDirectory ? '/' : '')).join(', ') || '(none)'
+  )
+
   const result = {
     movies: [],
     series: [],
@@ -71,8 +76,12 @@ export async function scanStorage(rootPath) {
   for (const entry of topDirs) {
     if (!entry.isDirectory) continue
     const category = detectCategory(entry.name)
-    if (!category) continue
+    if (!category) {
+      console.log(`[Tooty] skipping unrecognised folder: "${entry.name}"`)
+      continue
+    }
 
+    console.log(`[Tooty] scanning category "${category}" from folder "${entry.name}"`)
     switch (category) {
       case 'movies':
         result.movies = await scanMoviesFolder(entry.fullPath)
@@ -87,6 +96,7 @@ export async function scanStorage(rootPath) {
         result.music = await scanMusicFolder(entry.fullPath)
         break
     }
+    console.log(`[Tooty] "${category}" scan complete — found ${result[category].length} item(s)`)
   }
 
   return result
@@ -129,8 +139,54 @@ async function scanMoviesFolder(path) {
           filePath: file.fullPath,
           folderPath: dir.fullPath,
           subtitles: subs,
-          sidecarInfo: null,  // loaded separately if info.json present
+          sidecarInfo: null,
         })
+      }
+
+      // Sub-category folder (e.g. Movies/Animated/Title (2023)/film.mkv) —
+      // recurse into subdirectories and treat each as a title folder
+      for (const subDir of children.filter(f => f.isDirectory)) {
+        const subMeta = parseFolder(subDir.name)
+        // Skip known subtitle subfolder names — they're not title dirs
+        if (/^subs?(titles?)?$/i.test(subDir.name)) continue
+        const subChildren = await listDirectory(subDir.fullPath)
+        const subVideos = subChildren.filter(f => !f.isDirectory && isVideoFile(f.name))
+        const allSubSubs = await collectSubtitles(subDir.fullPath, subChildren)
+
+        if (subMeta.isGrouped) {
+          // Flat video files inside the sub-category dir
+          for (const file of subVideos) {
+            const fileMeta = parseFilename(file.name)
+            const subs = allSubSubs
+              .filter(s => s.name.startsWith(stripExt(file.name)))
+              .map(s => ({ path: s.fullPath, ...parseSubtitle(s.name) }))
+            movies.push({
+              id: pathToId(file.fullPath),
+              title: fileMeta.title || subMeta.title,
+              year: fileMeta.year,
+              quality: fileMeta.quality,
+              filePath: file.fullPath,
+              folderPath: subDir.fullPath,
+              subtitles: subs,
+              sidecarInfo: null,
+            })
+          }
+        } else {
+          const primaryFile = subVideos[0]
+          if (!primaryFile) continue
+          const subSidecar = await loadSidecar(subDir.fullPath)
+          const subs = allSubSubs.map(s => ({ path: s.fullPath, ...parseSubtitle(s.name) }))
+          movies.push({
+            id: pathToId(subDir.fullPath),
+            title: subSidecar?.title ?? subMeta.title,
+            year: subSidecar?.year ?? subMeta.year,
+            quality: parseFilename(primaryFile.name).quality,
+            filePath: primaryFile.fullPath,
+            folderPath: subDir.fullPath,
+            subtitles: subs,
+            sidecarInfo: subSidecar,
+          })
+        }
       }
     } else {
       // Single-title folder — all videos belong to one film (e.g. extras)
@@ -139,7 +195,8 @@ async function scanMoviesFolder(path) {
       if (!primaryFile) continue
 
       const sidecar = await loadSidecar(dir.fullPath)
-      const subs = subtitleFiles.map(s => ({
+      const allSubFiles = await collectSubtitles(dir.fullPath, children)
+      const subs = allSubFiles.map(s => ({
         path: s.fullPath,
         ...parseSubtitle(s.name),
       }))
@@ -173,11 +230,10 @@ async function scanSeriesFolder(path) {
 
     const showMeta = parseFolder(showDir.name)
     const sidecar = await loadSidecar(showDir.fullPath)
-    const seasonDirs = await listDirectory(showDir.fullPath)
+    const showEntries = await listDirectory(showDir.fullPath)
+    const seasonsByNumber = new Map()
 
-    const seasons = []
-
-    for (const seasonDir of seasonDirs) {
+    for (const seasonDir of showEntries) {
       if (!seasonDir.isDirectory) continue
       // Accept "Season N", "S01", "Season 1", etc.
       if (!/season|^s\d+/i.test(seasonDir.name)) continue
@@ -206,10 +262,35 @@ async function scanSeriesFolder(path) {
       episodes.sort((a, b) => a.episode - b.episode)
 
       if (episodes.length > 0) {
-        seasons.push({ seasonNumber, episodes })
+        mergeSeasonEpisodes(seasonsByNumber, seasonNumber, episodes)
       }
     }
 
+    const rootEpisodes = []
+    for (const file of showEntries) {
+      if (file.isDirectory || !isVideoFile(file.name)) continue
+      const epMeta = parseFilename(file.name)
+      if (epMeta.type !== 'episode') continue
+
+      rootEpisodes.push({
+        id: pathToId(file.fullPath),
+        title: epMeta.title,
+        season: epMeta.season ?? 1,
+        episode: epMeta.episode,
+        episodeEnd: epMeta.episodeEnd,
+        quality: epMeta.quality,
+        filePath: file.fullPath,
+      })
+    }
+
+    if (rootEpisodes.length > 0) {
+      const groupedRootEpisodes = groupEpisodesBySeason(rootEpisodes)
+      groupedRootEpisodes.forEach(({ seasonNumber, episodes }) => {
+        mergeSeasonEpisodes(seasonsByNumber, seasonNumber, episodes)
+      })
+    }
+
+    const seasons = [...seasonsByNumber.values()]
     seasons.sort((a, b) => a.seasonNumber - b.seasonNumber)
 
     if (seasons.length > 0 || sidecar) {
@@ -331,7 +412,7 @@ async function scanMusicFolder(path) {
  *
  * Falls back to an empty array on any error.
  */
-function listDirectory(path) {
+export function listDirectory(path) {
   return new Promise((resolve) => {
     if (typeof tizen === 'undefined') {
       // Browser dev mode — return empty
@@ -403,6 +484,25 @@ function loadSidecar(folderPath) {
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
+/**
+ * Collect subtitle files from a folder and any Subs/Subtitles subfolder.
+ */
+async function collectSubtitles(folderPath, directChildren) {
+  const subs = directChildren.filter(f => !f.isDirectory && isSubtitleFile(f.name))
+
+  const subDir = directChildren.find(
+    f => f.isDirectory && /^subs?(titles?)?$/i.test(f.name)
+  )
+  if (subDir) {
+    const subDirFiles = await listDirectory(subDir.fullPath)
+    subDirFiles.forEach(f => {
+      if (!f.isDirectory && isSubtitleFile(f.name)) subs.push(f)
+    })
+  }
+
+  return subs
+}
+
 function detectCategory(folderName) {
   const lower = folderName.toLowerCase().trim()
   for (const [category, aliases] of Object.entries(CATEGORY_FOLDERS)) {
@@ -414,6 +514,38 @@ function detectCategory(folderName) {
 function extractSeasonNumber(dirName) {
   const m = dirName.match(/\d+/)
   return m ? parseInt(m[0], 10) : 1
+}
+
+function groupEpisodesBySeason(episodes) {
+  const seasons = new Map()
+
+  for (const episode of episodes) {
+    const seasonNumber = episode.season ?? 1
+    if (!seasons.has(seasonNumber)) {
+      seasons.set(seasonNumber, { seasonNumber, episodes: [] })
+    }
+    seasons.get(seasonNumber).episodes.push(episode)
+  }
+
+  return [...seasons.values()].map(season => ({
+    ...season,
+    episodes: season.episodes.sort((a, b) => a.episode - b.episode),
+  }))
+}
+
+function mergeSeasonEpisodes(seasonsByNumber, seasonNumber, episodes) {
+  if (!seasonsByNumber.has(seasonNumber)) {
+    seasonsByNumber.set(seasonNumber, { seasonNumber, episodes: [] })
+  }
+
+  const season = seasonsByNumber.get(seasonNumber)
+  const seen = new Set(season.episodes.map(episode => episode.id))
+  for (const episode of episodes) {
+    if (seen.has(episode.id)) continue
+    seen.add(episode.id)
+    season.episodes.push(episode)
+  }
+  season.episodes.sort((a, b) => a.episode - b.episode)
 }
 
 /**

@@ -48,6 +48,7 @@ export async function detectDevices() {
  */
 export function needsScan(deviceKey, forceRescan = false) {
   if (forceRescan) return true
+  if (typeof tizen === 'undefined') return true
   return !hasCachedLibrary(deviceKey)
 }
 
@@ -131,7 +132,13 @@ export function listKnownDevices() {
 // ─── Tizen storage enumeration ────────────────────────────────────────────────
 
 /**
- * Enumerate external (removable) storages via tizen.systeminfo.
+ * Enumerate external (removable) storages.
+ *
+ * Strategy (TV):
+ *   1. tizen.filesystem.listStorages()  — the TV-native API; most reliable.
+ *   2. tizen.systeminfo.getPropertyValueArray('STORAGE', ...) — mobile-oriented
+ *      fallback used when listStorages is unavailable or returns nothing.
+ *
  * Returns an array of { key, label, rootPath }.
  */
 function getExternalStorages() {
@@ -144,34 +151,112 @@ function getExternalStorages() {
       return
     }
 
+    // ── Primary: filesystem.listStorages (Tizen TV native) ──────────────────
+    if (typeof tizen.filesystem?.listStorages === 'function') {
+      try {
+        tizen.filesystem.listStorages(
+          (storages) => {
+            console.log('[Tooty] tizen.filesystem.listStorages raw:', JSON.stringify(
+              storages.map(s => ({ label: s.label, type: s.type, state: s.state }))
+            ))
+
+            const external = storages
+              .filter(s => s.type === 'EXTERNAL' && s.state === 'MOUNTED')
+              .map(s => ({
+                key:      s.label,
+                label:    s.label,
+                rootPath: s.label,
+              }))
+
+            console.log('[Tooty] external storages found:', JSON.stringify(external))
+
+            if (external.length > 0) {
+              resolve(external)
+              return
+            }
+
+            // listStorages returned nothing external — fall through to systeminfo
+            getExternalStoragesViaSysteminfo().then(resolve)
+          },
+          (err) => {
+            console.warn('[Tooty] listStorages error:', err)
+            getExternalStoragesViaSysteminfo().then(resolve)
+          }
+        )
+        return
+      } catch (e) {
+        console.warn('[Tooty] listStorages threw:', e)
+        // fall through
+      }
+    }
+
+    // ── Fallback: systeminfo ─────────────────────────────────────────────────
+    getExternalStoragesViaSysteminfo().then(resolve)
+  })
+}
+
+/**
+ * Fallback storage enumeration using tizen.systeminfo.
+ * Used when filesystem.listStorages is unavailable or finds nothing.
+ */
+function getExternalStoragesViaSysteminfo() {
+  return new Promise((resolve) => {
+    if (!tizen.systeminfo?.getPropertyValueArray) {
+      resolve([])
+      return
+    }
+
     try {
       tizen.systeminfo.getPropertyValueArray(
         'STORAGE',
         (storages) => {
-          const external = []
+          console.log('[Tooty] systeminfo STORAGE raw:', JSON.stringify(storages))
 
-          storages.forEach((info, idx) => {
-            // Tizen storage units: type "EXTERNAL" = removable
-            if (!info.units) return
-            info.units.forEach(unit => {
-              if (unit.type !== 'EXTERNAL') return
-              const key = `removable${idx + 1}`
-              external.push({
-                key,
-                label: unit.label || key,
-                rootPath: `${key}://`,
-              })
+          const external = []
+          let removableIndex = 1
+
+          flattenStorageUnits(storages).forEach(unit => {
+            if (!isExternalStorageUnit(unit)) return
+            const key = `removable${removableIndex++}`
+            external.push({
+              key,
+              label: unit.label || key,
+              rootPath: key,
             })
           })
 
+          console.log('[Tooty] systeminfo external storages:', JSON.stringify(external))
           resolve(external)
         },
-        () => resolve([])
+        (err) => {
+          console.warn('[Tooty] systeminfo STORAGE error:', err)
+          resolve([])
+        }
       )
-    } catch {
+    } catch (e) {
+      console.warn('[Tooty] systeminfo threw:', e)
       resolve([])
     }
   })
+}
+
+function flattenStorageUnits(storages) {
+  return storages.flatMap(entry => {
+    if (Array.isArray(entry?.units)) return entry.units
+    return entry ? [entry] : []
+  })
+}
+
+function isExternalStorageUnit(unit) {
+  if (!unit) return false
+
+  const type = String(unit.type ?? '').toUpperCase()
+  // 'EXTERNAL' — standard Tizen; 'MMC' — used by some Samsung TV models for USB
+  if (type === 'EXTERNAL' || type === 'MMC') return true
+  if (type.startsWith('USB')) return true
+
+  if (typeof unit.isRemovable === 'boolean') return unit.isRemovable
+  return false
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

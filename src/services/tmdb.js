@@ -4,13 +4,20 @@
  * TMDB API client.
  * Fetches metadata for movies and TV shows, backed by metadataCache.
  *
- * API key is stored in localStorage under "tooty:config:tmdbKey".
- * The user enters it once in the Settings screen.
+ * TMDB credentials are stored in localStorage under "tooty:config:tmdbKey".
+ * This value may be either:
+ *   - a TMDB v3 API key
+ *   - a TMDB v4 read access token
  *
  * All fetch functions return null on failure — callers degrade gracefully.
  */
 
-import { getCachedMetadata, setCachedMetadata, hasMetadata } from './metadataCache.js'
+import {
+  getCachedMetadata,
+  setCachedMetadata,
+  getCachedLookup,
+  setCachedLookup,
+} from './metadataCache.js'
 
 const BASE_URL = 'https://api.themoviedb.org/3'
 const IMAGE_BASE = 'https://image.tmdb.org/t/p'
@@ -34,14 +41,18 @@ export const BACKDROP_SIZES = {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-// Env var takes priority (baked in at build time).
-// Falls back to localStorage so the user can override via Settings if needed.
-export function getTmdbApiKey() {
+// Env vars take priority (baked in at build time), then localStorage override.
+export function getTmdbCredential() {
   return (
     import.meta.env.VITE_TMDB_API_KEY ||
+    import.meta.env.VITE_TMDB_READ_ACCESS_TOKEN ||
     localStorage.getItem('tooty:config:tmdbKey') ||
     null
   )
+}
+
+export function getTmdbApiKey() {
+  return getTmdbCredential()
 }
 
 export function setTmdbApiKey(key) {
@@ -60,6 +71,49 @@ export function backdropUrl(path, size = 'large') {
   return `${BACKDROP_SIZES[size]}${path}`
 }
 
+function getAuthConfig() {
+  const credential = getTmdbCredential()
+  if (!credential) return null
+
+  if (credential.includes('.') || credential.startsWith('eyJ')) {
+    return {
+      kind: 'bearer',
+      headers: {
+        Authorization: `Bearer ${credential}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  }
+
+  return {
+    kind: 'apiKey',
+    apiKey: credential,
+    headers: {},
+  }
+}
+
+function withAuthParams(params, auth) {
+  if (auth?.kind === 'apiKey') params.set('api_key', auth.apiKey)
+  return params
+}
+
+async function tmdbFetch(path, params = new URLSearchParams()) {
+  const auth = getAuthConfig()
+  if (!auth) return null
+
+  const finalParams = withAuthParams(params, auth)
+
+  try {
+    const res = await fetch(`${BASE_URL}${path}?${finalParams}`, {
+      headers: auth.headers,
+    })
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    return null
+  }
+}
+
 // ─── Search ───────────────────────────────────────────────────────────────────
 
 /**
@@ -68,11 +122,15 @@ export function backdropUrl(path, size = 'large') {
  * Results are NOT cached — only the final enriched fetch is cached.
  */
 export async function searchMovie(title, year = null) {
-  const apiKey = getTmdbApiKey()
-  if (!apiKey) return null
+  if (!getTmdbCredential()) return null
+
+  const cacheKey = buildLookupKey(title, year)
+  const cached = getCachedLookup('movie-search', cacheKey)
+  if (cached) {
+    return cached.status === 'miss' ? null : cached.result
+  }
 
   const params = new URLSearchParams({
-    api_key: apiKey,
     query: title,
     include_adult: 'false',
     language: 'en-US',
@@ -80,14 +138,18 @@ export async function searchMovie(title, year = null) {
   })
   if (year) params.set('year', String(year))
 
-  try {
-    const res = await fetch(`${BASE_URL}/search/movie?${params}`)
-    if (!res.ok) return null
-    const data = await res.json()
-    return pickBestResult(data.results, title, year)
-  } catch {
-    return null
-  }
+  const data = await tmdbFetch('/search/movie', params)
+  if (!data) return null
+
+  const result = pickBestResult(data.results, title, year)
+  setCachedLookup(
+    'movie-search',
+    cacheKey,
+    result
+      ? { status: 'hit', result }
+      : { status: 'miss' }
+  )
+  return result
 }
 
 /**
@@ -95,11 +157,15 @@ export async function searchMovie(title, year = null) {
  * Returns the best-match result object or null.
  */
 export async function searchTv(title, year = null) {
-  const apiKey = getTmdbApiKey()
-  if (!apiKey) return null
+  if (!getTmdbCredential()) return null
+
+  const cacheKey = buildLookupKey(title, year)
+  const cached = getCachedLookup('tv-search', cacheKey)
+  if (cached) {
+    return cached.status === 'miss' ? null : cached.result
+  }
 
   const params = new URLSearchParams({
-    api_key: apiKey,
     query: title,
     include_adult: 'false',
     language: 'en-US',
@@ -107,14 +173,18 @@ export async function searchTv(title, year = null) {
   })
   if (year) params.set('first_air_date_year', String(year))
 
-  try {
-    const res = await fetch(`${BASE_URL}/search/tv?${params}`)
-    if (!res.ok) return null
-    const data = await res.json()
-    return pickBestResult(data.results, title, year)
-  } catch {
-    return null
-  }
+  const data = await tmdbFetch('/search/tv', params)
+  if (!data) return null
+
+  const result = pickBestResult(data.results, title, year)
+  setCachedLookup(
+    'tv-search',
+    cacheKey,
+    result
+      ? { status: 'hit', result }
+      : { status: 'miss' }
+  )
+  return result
 }
 
 // ─── Detail fetches ───────────────────────────────────────────────────────────
@@ -127,24 +197,15 @@ export async function fetchMovieDetails(tmdbId) {
   const cached = getCachedMetadata('movie', tmdbId)
   if (cached) return cached
 
-  const apiKey = getTmdbApiKey()
-  if (!apiKey) return null
-
   const params = new URLSearchParams({
-    api_key: apiKey,
     language: 'en-US',
     append_to_response: 'credits',
   })
 
-  try {
-    const res = await fetch(`${BASE_URL}/movie/${tmdbId}?${params}`)
-    if (!res.ok) return null
-    const data = await res.json()
-    setCachedMetadata('movie', tmdbId, data)
-    return data
-  } catch {
-    return null
-  }
+  const data = await tmdbFetch(`/movie/${tmdbId}`, params)
+  if (!data) return null
+  setCachedMetadata('movie', tmdbId, data)
+  return data
 }
 
 /**
@@ -155,24 +216,34 @@ export async function fetchTvDetails(tmdbId) {
   const cached = getCachedMetadata('tv', tmdbId)
   if (cached) return cached
 
-  const apiKey = getTmdbApiKey()
-  if (!apiKey) return null
-
   const params = new URLSearchParams({
-    api_key: apiKey,
     language: 'en-US',
     append_to_response: 'credits',
   })
 
-  try {
-    const res = await fetch(`${BASE_URL}/tv/${tmdbId}?${params}`)
-    if (!res.ok) return null
-    const data = await res.json()
-    setCachedMetadata('tv', tmdbId, data)
-    return data
-  } catch {
-    return null
-  }
+  const data = await tmdbFetch(`/tv/${tmdbId}`, params)
+  if (!data) return null
+  setCachedMetadata('tv', tmdbId, data)
+  return data
+}
+
+/**
+ * Fetch a single TV season payload, including canonical episode titles.
+ * Results are cached per show/season combination.
+ */
+export async function fetchTvSeasonDetails(tmdbId, seasonNumber) {
+  const seasonKey = `${tmdbId}:${seasonNumber}`
+  const cached = getCachedMetadata('tv-season', seasonKey)
+  if (cached) return cached
+
+  const params = new URLSearchParams({
+    language: 'en-US',
+  })
+
+  const data = await tmdbFetch(`/tv/${tmdbId}/season/${seasonNumber}`, params)
+  if (!data) return null
+  setCachedMetadata('tv-season', seasonKey, data)
+  return data
 }
 
 /**
@@ -223,4 +294,9 @@ function pickBestResult(results, title, year) {
 
   // Default to first (highest popularity) result
   return results[0]
+}
+
+export function buildLookupKey(title, year) {
+  const cleanedTitle = title?.trim().toLowerCase() ?? ''
+  return `${cleanedTitle}::${year ?? ''}`
 }

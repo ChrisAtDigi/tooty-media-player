@@ -68,10 +68,10 @@ export default function SearchScreen() {
   }, [])
 
   return (
-    <div className="h-full flex bg-surface overflow-hidden">
+    <div className="h-full min-h-0 flex bg-surface overflow-hidden">
 
       {/* ── Results panel (left 55%) ──────────────────────────────────── */}
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
 
         {/* Query display */}
         <div className="flex-none px-safe pt-10 pb-6 border-b border-white/10">
@@ -91,7 +91,7 @@ export default function SearchScreen() {
         </div>
 
         {/* Result list */}
-        <div className="flex-1 overflow-y-auto px-safe py-4">
+        <div className="flex-1 min-h-0 overflow-y-auto px-safe pt-4 pb-20">
           {query.trim() && results.length === 0 && (
             <p className="text-text-muted mt-4">No results for "{query.trim()}"</p>
           )}
@@ -101,7 +101,7 @@ export default function SearchScreen() {
               return (
                 <FocusRing
                   key={item.id}
-                  className="flex items-center gap-4 px-4 py-3 rounded-card cursor-pointer hover:bg-white/5"
+                  className="scale-on-focus flex items-center gap-4 px-4 py-3 rounded-card cursor-pointer hover:bg-white/5 transition-transform duration-300"
                   onClick={() => navigate(`/detail/${item.id}`)}
                   onFocus={e => e.currentTarget.scrollIntoView({ block: 'nearest' })}
                 >

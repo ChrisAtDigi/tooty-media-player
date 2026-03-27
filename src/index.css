@@ -19,11 +19,34 @@
   .focusable:focus {
     @apply ring-tv ring-focus-ring ring-offset-2 ring-offset-surface;
   }
+
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @layer components {
   /* Spatial navigation focus class applied by js-spatial-navigation */
   .sn-focused {
     @apply ring-4 ring-focus-ring ring-offset-2 ring-offset-surface;
+  }
+
+  .shelf-row {
+    transform-origin: left center;
+  }
+
+  .scale-on-focus {
+    transform-origin: center center;
+  }
+
+  .scale-on-focus.sn-focused,
+  .scale-on-focus:hover {
+    transform: scale(1.08);
+    z-index: 12;
   }
 }

@@ -1,9 +1,15 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import FocusRing from '../components/FocusRing.jsx'
 import useNavigation from '../hooks/useNavigation.js'
 import { useLibrary } from '../context/LibraryContext.jsx'
-import { fetchMovieDetails, fetchTvDetails, posterUrl, backdropUrl } from '../services/tmdb.js'
+import {
+  fetchMovieDetails,
+  fetchTvDetails,
+  fetchTvSeasonDetails,
+  posterUrl,
+  backdropUrl,
+} from '../services/tmdb.js'
 import { getProgress } from '../services/metadataCache.js'
 
 export default function DetailScreen() {
@@ -14,7 +20,9 @@ export default function DetailScreen() {
   const item = itemById.get(id) ?? null
 
   const [tmdb,           setTmdb]           = useState(null)
-  const [expandedSeason, setExpandedSeason] = useState(0)
+  const [selectedSeason, setSelectedSeason] = useState(null)
+  const [seasonDetails,  setSeasonDetails]  = useState({})
+  const loadedSeasonsRef = useRef(new Set())
 
   useNavigation({
     BACK: () => navigate(-1),
@@ -33,6 +41,47 @@ export default function DetailScreen() {
     load()
     return () => { cancelled = true }
   }, [item?.id, item?.tmdbId, item?.type]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const seasons = item?.seasons ?? []
+    if (seasons.length === 0) {
+      setSelectedSeason(null)
+      return
+    }
+
+    const inProgressSeason = seasons.find(season =>
+      season.episodes.some(ep => {
+        const progress = getProgress(ep.id)
+        if (!progress || progress.duration <= 0) return false
+        const pct = progress.position / progress.duration
+        return pct > 0 && pct < 0.95
+      })
+    )
+
+    setSelectedSeason(inProgressSeason?.seasonNumber ?? seasons[0].seasonNumber)
+  }, [item?.id, item?.seasons])
+
+  useEffect(() => {
+    setSeasonDetails({})
+    loadedSeasonsRef.current.clear()
+  }, [item?.id])
+
+  useEffect(() => {
+    const seasonNumber = selectedSeason
+    if (item?.type !== 'tv' || !item?.tmdbId || !seasonNumber) return
+    if (loadedSeasonsRef.current.has(seasonNumber)) return
+
+    let cancelled = false
+    async function loadSeason() {
+      const data = await fetchTvSeasonDetails(item.tmdbId, seasonNumber)
+      if (cancelled || !data) return
+      loadedSeasonsRef.current.add(seasonNumber)
+      setSeasonDetails(prev => ({ ...prev, [seasonNumber]: data }))
+    }
+
+    loadSeason()
+    return () => { cancelled = true }
+  }, [item?.tmdbId, item?.type, selectedSeason])
 
   // ── Not found ─────────────────────────────────────────────────────────────
 
@@ -64,7 +113,7 @@ export default function DetailScreen() {
     : item.posterPath ? posterUrl(item.posterPath, 'large') : null
 
   const overview = tmdb?.overview ?? item.overview ?? ''
-  const genres   = tmdb?.genres?.map(g => g.name).slice(0, 4) ?? []
+  const genres   = (tmdb?.genres?.map(g => g.name) ?? item.genres ?? []).slice(0, 4)
   const cast     = tmdb?.credits?.cast?.slice(0, 6) ?? []
   const rating   = tmdb?.vote_average ? tmdb.vote_average.toFixed(1) : null
   const year     = item.year
@@ -72,6 +121,11 @@ export default function DetailScreen() {
     ?? tmdb?.first_air_date?.slice(0, 4)
     ?? null
   const seasons  = item.seasons ?? []
+  const activeSeason = seasons.find(season => season.seasonNumber === selectedSeason) ?? seasons[0] ?? null
+  const activeSeasonEpisodes = mergeSeasonEpisodes(
+    activeSeason?.episodes ?? [],
+    seasonDetails[activeSeason?.seasonNumber]?.episodes ?? []
+  )
 
   // ── Play handlers ─────────────────────────────────────────────────────────
 
@@ -84,6 +138,7 @@ export default function DetailScreen() {
         mediaId:        item.id,
         type:           'movie',
         resumePosition: saved?.position ?? 0,
+        subtitles:      item.subtitles ?? [],
       },
     })
   }
@@ -110,7 +165,7 @@ export default function DetailScreen() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="h-full flex flex-col bg-surface overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col bg-surface overflow-hidden">
 
       {/* ── Backdrop hero ────────────────────────────────────────────── */}
       <div
@@ -177,7 +232,7 @@ export default function DetailScreen() {
       </div>
 
       {/* ── Scrollable detail content ─────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden px-safe py-8 space-y-8">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-safe pt-8 pb-20 space-y-8">
 
         {/* Cast */}
         {cast.length > 0 && (
@@ -209,69 +264,90 @@ export default function DetailScreen() {
         {seasons.length > 0 && (
           <div>
             <h2 className="text-lg font-semibold text-text-primary mb-4">Episodes</h2>
-            <div className="space-y-4">
-              {seasons.map((season, si) => (
-                <div key={season.seasonNumber}>
-                  {/* Season accordion header */}
-                  <FocusRing
-                    className="flex items-center justify-between w-full py-3 cursor-pointer border-b border-white/10"
-                    onClick={() => setExpandedSeason(si === expandedSeason ? -1 : si)}
-                    onFocus={e => e.currentTarget.scrollIntoView({ block: 'nearest' })}
-                  >
-                    <span className="text-base font-semibold text-text-primary">
-                      Season {season.seasonNumber}
-                    </span>
-                    <span className="text-text-muted text-sm">
-                      {season.episodes.length} episodes &nbsp;{si === expandedSeason ? '▲' : '▼'}
-                    </span>
-                  </FocusRing>
-
-                  {/* Episode list */}
-                  {si === expandedSeason && (
-                    <div className="mt-2 space-y-1">
-                      {season.episodes.map(ep => {
-                        const prog = getProgress(ep.id)
-                        const pct  = prog && prog.duration > 0 ? prog.position / prog.duration : 0
-                        return (
-                          <FocusRing
-                            key={ep.id}
-                            className="flex items-center gap-4 py-3 px-4 rounded-card cursor-pointer hover:bg-white/5"
-                            onClick={() => playEpisode(ep)}
-                            onFocus={e => e.currentTarget.scrollIntoView({ block: 'nearest' })}
-                          >
-                            <span className="text-text-muted text-sm w-8 flex-none tabular-nums">
-                              {String(ep.episode).padStart(2, '0')}
-                            </span>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm text-text-primary truncate">
-                                {ep.title || `Episode ${ep.episode}`}
-                              </p>
-                              {pct > 0 && pct < 0.95 && (
-                                <div className="mt-1 h-0.5 bg-white/10 rounded-full overflow-hidden w-32">
-                                  <div
-                                    className="h-full bg-accent rounded-full"
-                                    style={{ width: `${pct * 100}%` }}
-                                  />
-                                </div>
-                              )}
-                            </div>
-                            {ep.quality && (
-                              <span className="text-xs text-text-muted border border-white/20 rounded px-1.5 py-0.5">
-                                {ep.quality}
-                              </span>
-                            )}
-                          </FocusRing>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
+            <div className="flex gap-2 overflow-x-auto pb-4">
+              {seasons.map(season => (
+                <FocusRing
+                  key={season.seasonNumber}
+                  className={`px-4 py-2 rounded-full text-sm cursor-pointer whitespace-nowrap ${
+                    season.seasonNumber === activeSeason?.seasonNumber
+                      ? 'bg-accent text-surface font-semibold'
+                      : 'bg-white/10 text-text-secondary'
+                  }`}
+                  onClick={() => setSelectedSeason(season.seasonNumber)}
+                  onFocus={e => e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' })}
+                >
+                  {`Season ${season.seasonNumber} · ${season.episodes.length} eps`}
+                </FocusRing>
               ))}
             </div>
+
+            {activeSeason && (
+              <div className="rounded-card border border-white/10 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
+                  <span className="text-base font-semibold text-text-primary">
+                    Season {activeSeason.seasonNumber}
+                  </span>
+                  <span className="text-sm text-text-muted">
+                    {activeSeasonEpisodes.length} episodes
+                  </span>
+                </div>
+
+                <div className="divide-y divide-white/5">
+                  {activeSeasonEpisodes.map(ep => {
+                    const prog = getProgress(ep.id)
+                    const pct  = prog && prog.duration > 0 ? prog.position / prog.duration : 0
+                    return (
+                      <FocusRing
+                        key={ep.id}
+                        className="flex items-center gap-4 py-3 px-4 cursor-pointer hover:bg-white/5"
+                        onClick={() => playEpisode(ep)}
+                        onFocus={e => e.currentTarget.scrollIntoView({ block: 'nearest' })}
+                      >
+                        <span className="text-text-muted text-sm w-8 flex-none tabular-nums">
+                          {String(ep.episode).padStart(2, '0')}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-text-primary truncate">
+                            {ep.title || `Episode ${ep.episode}`}
+                          </p>
+                          {pct > 0 && pct < 0.95 && (
+                            <div className="mt-1 h-0.5 bg-white/10 rounded-full overflow-hidden w-32">
+                              <div
+                                className="h-full bg-accent rounded-full"
+                                style={{ width: `${pct * 100}%` }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                        {ep.quality && (
+                          <span className="text-xs text-text-muted border border-white/20 rounded px-1.5 py-0.5">
+                            {ep.quality}
+                          </span>
+                        )}
+                      </FocusRing>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
       </div>
     </div>
   )
+}
+
+function mergeSeasonEpisodes(localEpisodes, tmdbEpisodes) {
+  if (!tmdbEpisodes.length) return localEpisodes
+
+  const byEpisode = new Map(tmdbEpisodes.map(ep => [ep.episode_number, ep]))
+  return localEpisodes.map(ep => {
+    const tmdbEp = byEpisode.get(ep.episode)
+    if (!tmdbEp?.name) return ep
+    return {
+      ...ep,
+      title: tmdbEp.name,
+    }
+  })
 }
